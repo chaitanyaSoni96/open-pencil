@@ -1,4 +1,4 @@
-import { useEventListener } from '@vueuse/core'
+import { useEventListener, useMediaQuery } from '@vueuse/core'
 
 import { useAIChat } from '@/composables/use-chat'
 import { TOOL_SHORTCUTS, useEditorStore } from '@/stores/editor'
@@ -13,6 +13,7 @@ function isEditing(e: Event) {
 export function useKeyboard() {
   const { activeTab } = useAIChat()
   const store = useEditorStore()
+  const isMobile = useMediaQuery('(max-width: 767px)')
 
   useEventListener(window, 'copy', (e: ClipboardEvent) => {
     if (isEditing(e)) return
@@ -89,7 +90,14 @@ export function useKeyboard() {
       }
       if (e.code === 'KeyJ') {
         e.preventDefault()
-        activeTab.value = activeTab.value === 'ai' ? 'design' : 'ai'
+        if (isMobile.value) {
+          store.state.activeRibbonTab = store.state.activeRibbonTab === 'ai' ? 'panels' : 'ai'
+          if (store.state.mobileDrawerSnap === 0 || store.state.mobileDrawerSnap === 'closed') {
+            store.state.mobileDrawerSnap = 'half'
+          }
+        } else {
+          activeTab.value = activeTab.value === 'ai' ? 'design' : 'ai'
+        }
         return
       }
       if (e.key === 'w') {

@@ -179,7 +179,7 @@ export function createEditorStore() {
       y: number
       selection?: string[]
     }>,
-    showUI: matchMedia('(min-width: 768px)').matches,
+    showUI: true,
     documentName: 'Untitled' as string,
     panX: 0,
     pageColor: { ...CANVAS_BG_COLOR } as Color,
@@ -187,7 +187,11 @@ export function createEditorStore() {
     zoom: 1,
     renderVersion: 0,
     sceneVersion: 0,
-    loading: false
+    loading: false,
+    activeRibbonTab: null as 'panels' | 'code' | 'ai' | null,
+    panelMode: 'design' as 'layers' | 'design',
+    actionToast: null as string | null,
+    mobileDrawerSnap: 0 as number | string | null
   })
 
   const AUTOSAVE_DELAY = 3000

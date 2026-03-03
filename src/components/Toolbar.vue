@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
@@ -6,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuPortal
 } from 'reka-ui'
+import { useMediaQuery } from '@vueuse/core'
 
 import IconMousePointer from '~icons/lucide/mouse-pointer'
 import IconFrame from '~icons/lucide/frame'
@@ -19,14 +21,28 @@ import IconPenTool from '~icons/lucide/pen-tool'
 import IconType from '~icons/lucide/type'
 import IconHand from '~icons/lucide/hand'
 import IconChevronDown from '~icons/lucide/chevron-down'
+import IconChevronLeft from '~icons/lucide/chevron-left'
+import IconChevronRight from '~icons/lucide/chevron-right'
+import IconCopy from '~icons/lucide/copy'
+import IconClipboard from '~icons/lucide/clipboard'
+import IconScissors from '~icons/lucide/scissors'
+import IconCopyPlus from '~icons/lucide/copy-plus'
+import IconTrash2 from '~icons/lucide/trash-2'
+import IconArrowUpToLine from '~icons/lucide/arrow-up-to-line'
+import IconArrowDownToLine from '~icons/lucide/arrow-down-to-line'
+import IconGroup from '~icons/lucide/group'
+import IconUngroup from '~icons/lucide/ungroup'
+import IconLock from '~icons/lucide/lock'
 
 import { TOOLS, useEditorStore } from '@/stores/editor'
 
+import type { Component } from 'vue'
 import type { Tool } from '@/stores/editor'
 
 const store = useEditorStore()
+const isMobile = useMediaQuery('(max-width: 767px)')
 
-const toolIcons: Record<Tool, typeof IconSquare> = {
+const toolIcons: Record<Tool, Component> = {
   SELECT: IconMousePointer,
   FRAME: IconFrame,
   SECTION: IconLayoutGrid,
@@ -77,13 +93,107 @@ function activeKeyForTool(tool: (typeof TOOLS)[number]): Tool {
   if (tool.flyout?.includes(store.state.activeTool)) return store.state.activeTool
   return tool.key
 }
+
+interface ActionItem {
+  icon: Component
+  label: string
+  action: () => void
+}
+
+const ACTION_TOAST_DURATION = 800
+
+let internalClipboard = ''
+
+function mobileCopy() {
+  const nodes = store.selectedNodes.value
+  if (nodes.length === 0) return
+  const transfer = new DataTransfer()
+  store.writeCopyData(transfer)
+  internalClipboard = transfer.getData('text/html')
+}
+
+function mobileCut() {
+  mobileCopy()
+  store.deleteSelected()
+}
+
+function mobilePaste() {
+  if (internalClipboard) {
+    store.pasteFromHTML(internalClipboard)
+  }
+}
+
+const editActions: ActionItem[] = [
+  { icon: IconCopy, label: 'Copy', action: mobileCopy },
+  { icon: IconClipboard, label: 'Paste', action: mobilePaste },
+  { icon: IconScissors, label: 'Cut', action: mobileCut },
+  { icon: IconCopyPlus, label: 'Duplicate', action: () => store.duplicateSelected() },
+  { icon: IconTrash2, label: 'Delete', action: () => store.deleteSelected() }
+]
+
+const arrangeActions: ActionItem[] = [
+  { icon: IconArrowUpToLine, label: 'Front', action: () => store.bringToFront() },
+  { icon: IconArrowDownToLine, label: 'Back', action: () => store.sendToBack() },
+  { icon: IconGroup, label: 'Group', action: () => store.groupSelected() },
+  { icon: IconUngroup, label: 'Ungroup', action: () => store.ungroupSelected() },
+  { icon: IconLock, label: 'Lock', action: () => store.toggleLock() }
+]
+
+const CATEGORY_COUNT = 3
+const mobileCategory = ref(0)
+const hasPrev = computed(() => mobileCategory.value > 0)
+const hasNext = computed(() => mobileCategory.value < CATEGORY_COUNT - 1)
+
+function prevCategory() {
+  if (hasPrev.value) mobileCategory.value--
+}
+function nextCategory() {
+  if (hasNext.value) mobileCategory.value++
+}
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+
+function onActionTap(item: ActionItem) {
+  item.action()
+  store.state.actionToast = item.label
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    store.state.actionToast = null
+  }, ACTION_TOAST_DURATION)
+}
+
+const cat0Ref = ref<HTMLElement | null>(null)
+const cat1Ref = ref<HTMLElement | null>(null)
+const cat2Ref = ref<HTMLElement | null>(null)
+const catRefs = [cat0Ref, cat1Ref, cat2Ref]
+
+const wrapperW = ref(0)
+const wrapperH = ref(0)
+const measured = ref(false)
+
+function measure() {
+  const el = catRefs[mobileCategory.value]?.value
+  if (el) {
+    wrapperW.value = el.scrollWidth
+    wrapperH.value = el.scrollHeight
+    measured.value = true
+  }
+}
+
+onMounted(() => {
+  nextTick(measure)
+})
+
+watch(mobileCategory, () => {
+  nextTick(measure)
+})
 </script>
 
 <template>
-  <div class="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center">
+  <!-- Desktop toolbar -->
+  <div v-if="!isMobile" class="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center">
     <div class="flex gap-0.5 rounded-xl border border-border bg-panel p-1 shadow-lg">
       <template v-for="tool in TOOLS" :key="tool.key">
-        <!-- Tool with flyout: split button + chevron -->
         <div v-if="tool.flyout && tool.flyout.length > 1" class="flex items-center">
           <button
             class="flex size-8 cursor-pointer items-center justify-center rounded-lg border-none transition-colors"
@@ -141,7 +251,6 @@ function activeKeyForTool(tool: (typeof TOOLS)[number]): Tool {
           </DropdownMenuRoot>
         </div>
 
-        <!-- Simple tool button -->
         <button
           v-else
           class="flex size-8 cursor-pointer items-center justify-center rounded-lg border-none transition-colors"
@@ -157,5 +266,153 @@ function activeKeyForTool(tool: (typeof TOOLS)[number]): Tool {
         </button>
       </template>
     </div>
+  </div>
+
+  <!-- Mobile toolbar -->
+  <div
+    v-else
+    class="absolute bottom-[calc(44px+env(safe-area-inset-bottom)+0.75rem)] left-0 right-0 z-10 flex items-center justify-center gap-1.5 px-2"
+    @touchstart.stop
+  >
+    <!-- Left arrow -->
+    <button
+      class="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-panel shadow-sm transition-opacity select-none"
+      :class="hasPrev ? 'text-muted opacity-100' : 'pointer-events-none opacity-0'"
+      @click="prevCategory"
+    >
+      <IconChevronLeft class="size-3.5" />
+    </button>
+
+    <!-- Toolbar container — animated width/height -->
+    <div
+      class="relative flex h-11 items-center overflow-hidden rounded-[8px] border border-border bg-panel px-2 shadow-lg"
+      :style="measured ? { width: wrapperW + 16 + 'px', transition: 'width 250ms ease' } : {}"
+    >
+      <!-- Category 0: Drawing tools -->
+      <div
+        ref="cat0Ref"
+        class="flex gap-0.5 transition-opacity duration-200"
+        :class="
+          mobileCategory === 0
+            ? 'relative opacity-100'
+            : 'absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-0'
+        "
+      >
+        <template v-for="tool in TOOLS" :key="tool.key">
+          <div v-if="tool.flyout && tool.flyout.length > 1" class="flex items-center">
+            <button
+              class="flex size-8 cursor-pointer items-center justify-center rounded-[6px] border-none transition-colors select-none"
+              :class="
+                isActive(tool)
+                  ? 'bg-accent text-white'
+                  : 'bg-transparent text-muted active:bg-hover'
+              "
+              @click="store.setTool(activeKeyForTool(tool))"
+            >
+              <component :is="toolIcons[activeKeyForTool(tool)]" class="size-4" />
+            </button>
+
+            <DropdownMenuRoot>
+              <DropdownMenuTrigger as-child>
+                <button
+                  class="flex h-8 w-3 cursor-pointer items-center justify-center rounded-[6px] border-none transition-colors select-none"
+                  :class="
+                    isActive(tool)
+                      ? 'bg-accent text-white'
+                      : 'bg-transparent text-muted active:bg-hover'
+                  "
+                >
+                  <IconChevronDown class="size-2.5" />
+                </button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuPortal>
+                <DropdownMenuContent
+                  side="top"
+                  :side-offset="8"
+                  align="start"
+                  class="min-w-32 rounded-lg border border-border bg-panel p-1 shadow-lg"
+                >
+                  <DropdownMenuItem
+                    v-for="sub in tool.flyout"
+                    :key="sub"
+                    class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none transition-colors"
+                    :class="
+                      store.state.activeTool === sub
+                        ? 'bg-accent text-white'
+                        : 'text-surface hover:bg-hover'
+                    "
+                    @select="store.setTool(sub)"
+                  >
+                    <component :is="toolIcons[sub]" class="size-3.5" />
+                    <span class="flex-1">{{ toolLabels[sub] }}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenuPortal>
+            </DropdownMenuRoot>
+          </div>
+
+          <button
+            v-else
+            class="flex size-8 cursor-pointer items-center justify-center rounded-[6px] border-none transition-colors select-none"
+            :class="
+              isActive(tool) ? 'bg-accent text-white' : 'bg-transparent text-muted active:bg-hover'
+            "
+            @click="store.setTool(tool.key)"
+          >
+            <component :is="toolIcons[tool.key]" class="size-4" />
+          </button>
+        </template>
+      </div>
+
+      <!-- Category 1: Edit -->
+      <div
+        ref="cat1Ref"
+        class="flex gap-0.5 transition-opacity duration-200"
+        :class="
+          mobileCategory === 1
+            ? 'relative opacity-100'
+            : 'absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-0'
+        "
+      >
+        <button
+          v-for="item in editActions"
+          :key="item.label"
+          class="flex size-8 cursor-pointer items-center justify-center rounded-[6px] border-none bg-transparent text-muted transition-colors select-none active:bg-hover active:text-surface"
+          @click="onActionTap(item)"
+        >
+          <component :is="item.icon" class="size-4" />
+        </button>
+      </div>
+
+      <!-- Category 2: Arrange -->
+      <div
+        ref="cat2Ref"
+        class="flex gap-0.5 transition-opacity duration-200"
+        :class="
+          mobileCategory === 2
+            ? 'relative opacity-100'
+            : 'absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-0'
+        "
+      >
+        <button
+          v-for="item in arrangeActions"
+          :key="item.label"
+          class="flex size-8 cursor-pointer items-center justify-center rounded-[6px] border-none bg-transparent text-muted transition-colors select-none active:bg-hover active:text-surface"
+          @click="onActionTap(item)"
+        >
+          <component :is="item.icon" class="size-4" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Right arrow -->
+    <button
+      class="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-panel shadow-sm transition-opacity select-none"
+      :class="hasNext ? 'text-muted opacity-100' : 'pointer-events-none opacity-0'"
+      @click="nextCategory"
+    >
+      <IconChevronRight class="size-3.5" />
+    </button>
   </div>
 </template>
