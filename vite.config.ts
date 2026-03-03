@@ -6,6 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 import Icons from 'unplugin-icons/vite'
 import IconsResolver from 'unplugin-icons/resolver'
 import Components from 'unplugin-vue-components/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 
 // @ts-expect-error process is a nodejs global
@@ -47,7 +48,28 @@ export default defineConfig(async () => ({
     tailwindcss(),
     Icons({ compiler: 'vue3' }),
     Components({ resolvers: [IconsResolver({ prefix: 'icon' })] }),
-    vue()
+    vue(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      workbox: {
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+        globPatterns: ['**/*.{js,css,html,wasm,png,ico,ttf,webmanifest}'],
+        navigateFallback: '/index.html'
+      },
+      manifest: {
+        name: 'OpenPencil',
+        short_name: 'OpenPencil',
+        display: 'standalone',
+        start_url: '/',
+        theme_color: '#1e1e1e',
+        background_color: '#1e1e1e',
+        icons: [
+          { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+        ]
+      }
+    })
   ],
   clearScreen: false,
   server: {
